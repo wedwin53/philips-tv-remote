@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Philips TV · JointSpace Remote</title>
+<style>
+  :root{
+    --bg:#0a0c10; --panel:#11151c; --panel2:#161b24; --line:#222b38;
+    --txt:#dfe6f0; --dim:#7d8aa0; --accent:#38e1b0; --accent2:#2bb3ff;
+    --warn:#ff5c6c; --ok:#38e1b0; --radius:12px; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  body{padding:16px;max-width:520px;margin:0 auto;}
+  h1{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+    margin:0 0 14px;font-weight:600;display:flex;align-items:center;gap:10px}
+  .dot{width:9px;height:9px;border-radius:50%;background:#444;flex:0 0 auto;transition:.3s}
+  .dot.on{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .dot.off{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;margin-bottom:14px}
+  .cfg{display:flex;gap:8px;align-items:center}
+  .cfg input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--txt);
+    font-family:var(--mono);font-size:13px;padding:9px 10px;border-radius:8px}
+  .cfg input:focus{outline:none;border-color:var(--accent)}
+
+  /* status grid */
+  .status{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);
+    border-radius:8px;overflow:hidden}
+  .status .cell{background:var(--panel2);padding:10px 12px}
+  .status .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .status .v{font-family:var(--mono);font-size:15px;margin-top:3px;color:var(--txt);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* volume */
+  .vol{display:flex;align-items:center;gap:12px}
+  .vol input[type=range]{flex:1;accent-color:var(--accent)}
+  .volnum{font-family:var(--mono);font-size:15px;min-width:46px;text-align:right;color:var(--accent)}
+
+  /* buttons */
+  .grid{display:grid;gap:8px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  button.btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    font-size:14px;padding:12px 6px;border-radius:10px;cursor:pointer;transition:.1s;
+    -webkit-user-select:none;user-select:none;font-family:inherit}
+  button.btn:hover{border-color:var(--accent);color:#fff}
+  button.btn:active{transform:scale(.95);background:var(--accent);color:#06130f;border-color:var(--accent)}
+  button.btn.wide{grid-column:span 2}
+  button.btn.sym{font-family:var(--mono);font-size:16px}
+  button.btn.danger:hover{border-color:var(--warn);color:var(--warn)}
+  button.btn.accent{border-color:#1e3a44;color:var(--accent)}
+
+  .label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:4px 2px 8px}
+
+  /* d-pad */
+  .dpad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,56px);gap:8px;
+    max-width:260px;margin:0 auto}
+  .dpad .sp{visibility:hidden}
+  .dpad .ok{background:var(--accent);color:#06130f;border-color:var(--accent);font-weight:700}
+
+  /* console */
+  .con{font-family:var(--mono);font-size:11.5px;color:var(--dim);background:var(--bg);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:34px;
+    white-space:pre-wrap;word-break:break-word;line-height:1.5}
+  .con b{color:var(--accent)} .con .e{color:var(--warn)}
+  .foot{font-size:11px;color:var(--dim);text-align:center;margin-top:4px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+  <h1><span id="dot" class="dot"></span> Philips TV · JointSpace</h1>
+
+  <div class="card">
+    <div class="cfg">
+      <input id="ip" value="192.168.18.10" spellcheck="false" />
+      <input id="api" value="6" style="max-width:52px" spellcheck="false" title="API version" />
+      <button class="btn accent" id="scanbtn" style="flex:0 0 auto;padding:9px 12px" onclick="discover()">Descubrir TV</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="status">
+      <div class="cell"><div class="k">Modelo</div><div class="v" id="st-model">—</div></div>
+      <div class="cell"><div class="k">Estado</div><div class="v" id="st-ctx">—</div></div>
+      <div class="cell"><div class="k">Volumen</div><div class="v" id="st-vol">—</div></div>
+      <div class="cell"><div class="k">Ambilight</div><div class="v" id="st-amb">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Volumen</div>
+    <div class="vol">
+      <button class="btn sym" onclick="key('Mute')" title="Silenciar">⊘</button>
+      <input id="volrange" type="range" min="0" max="60" value="0" oninput="setVol(this.value)" />
+      <span class="volnum" id="volnum">--</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Navegación</div>
+    <div class="dpad">
+      <div class="sp"></div>
+      <button class="btn sym" onclick="key('CursorUp')">▲</button>
+      <div class="sp"></div>
+      <button class="btn sym" onclick="key('CursorLeft')">◀</button>
+      <button class="btn ok" onclick="key('Confirm')">OK</button>
+      <button class="btn sym" onclick="key('CursorRight')">▶</button>
+      <div class="sp"></div>
+      <button class="btn sym" onclick="key('CursorDown')">▼</button>
+      <div class="sp"></div>
+    </div>
+    <div class="grid g3" style="margin-top:10px">
+      <button class="btn" onclick="key('Back')">Atrás</button>
+      <button class="btn" onclick="key('Home')">Home</button>
+      <button class="btn" onclick="key('Options')">Opciones</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Reproducción</div>
+    <div class="grid g4">
+      <button class="btn sym" onclick="key('Rewind')">⏪</button>
+      <button class="btn sym accent" onclick="key('PlayPause')">⏯</button>
+      <button class="btn sym" onclick="key('Stop')">⏹</button>
+      <button class="btn sym" onclick="key('FastForward')">⏩</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Canal · Fuente · Encendido</div>
+    <div class="grid g3">
+      <button class="btn" onclick="key('ChannelStepUp')">Canal +</button>
+      <button class="btn" onclick="key('Source')">Fuente</button>
+      <button class="btn" onclick="key('ChannelStepDown')">Canal −</button>
+      <button class="btn" onclick="key('WatchTV')">Ver TV</button>
+      <button class="btn" onclick="key('Info')">Info</button>
+      <button class="btn danger" onclick="confirmStandby()">⏻ Standby</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Teclado numérico</div>
+    <div class="grid g3">
+      <button class="btn sym" onclick="key('Digit1')">1</button>
+      <button class="btn sym" onclick="key('Digit2')">2</button>
+      <button class="btn sym" onclick="key('Digit3')">3</button>
+      <button class="btn sym" onclick="key('Digit4')">4</button>
+      <button class="btn sym" onclick="key('Digit5')">5</button>
+      <button class="btn sym" onclick="key('Digit6')">6</button>
+      <button class="btn sym" onclick="key('Digit7')">7</button>
+      <button class="btn sym" onclick="key('Digit8')">8</button>
+      <button class="btn sym" onclick="key('Digit9')">9</button>
+      <button class="btn sym" onclick="key('Dot')">·</button>
+      <button class="btn sym" onclick="key('Digit0')">0</button>
+      <button class="btn sym" onclick="key('ConfirmChannel')">↵</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Consola</div>
+    <div class="con" id="con">listo.</div>
+  </div>
+  <div class="foot" id="foot">—</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const base = () => `http://${$('ip').value.trim()}:1925/${$('api').value.trim()}`;
+
+function log(msg, err){
+  const c = $('con');
+  const t = new Date().toLocaleTimeString();
+  c.innerHTML = `<b>[${t}]</b> ` + (err ? `<span class="e">${msg}</span>` : msg);
+}
+function setDot(state){ // 'on' | 'off'
+  const d = $('dot'); d.className = 'dot ' + state;
+}
+
+// GET helper -> text (returns null on failure)
+async function get(path){
+  try{
+    const r = await fetch(base()+path, {method:'GET', cache:'no-store'});
+    return await r.text();
+  }catch(e){ return null; }
+}
+// POST command as a "simple request" (text/plain avoids CORS preflight)
+async function post(path, obj){
+  try{
+    const r = await fetch(base()+path, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify(obj)
+    });
+    await r.text();
+    return r.ok;
+  }catch(e){ log('error de red → '+e.message, true); return false; }
+}
+
+async function key(k){
+  const ok = await post('/input/key', {key:k});
+  log(ok ? `tecla <b>${k}</b> enviada` : `fallo al enviar ${k}`, !ok);
+  if(k==='Mute') setTimeout(refresh, 400);
+}
+async function setVol(v){
+  $('volnum').textContent = v;
+  await post('/audio/volume', {muted:false, current:Number(v)});
+  log(`volumen → <b>${v}</b>`);
+}
+function confirmStandby(){
+  if(confirm('¿Poner la TV en Standby (apagar)?')) key('Standby');
+}
+
+// ---- live status polling ----
+async function refresh(){
+  // volume
+  const volRaw = await get('/audio/volume');
+  if(volRaw===null){ setDot('off'); $('foot').textContent='sin conexión con '+$('ip').value; return; }
+  setDot('on');
+  try{
+    const v = JSON.parse(volRaw);
+    $('st-vol').textContent = (v.muted?'muted · ':'') + v.current + '/' + v.max;
+    const r = $('volrange'); r.max = v.max; r.value = v.current;
+    $('volnum').textContent = v.current;
+  }catch(e){}
+  // context
+  const ctxRaw = await get('/context');
+  try{ const c = JSON.parse(ctxRaw); $('st-ctx').textContent = c.level1 + (c.Recording==='On'?' · REC':''); }catch(e){}
+  // ambilight
+  const ambRaw = await get('/ambilight/mode');
+  try{ $('st-amb').textContent = JSON.parse(ambRaw).current; }catch(e){ $('st-amb').textContent='—'; }
+  $('foot').textContent = 'conectado · ' + new Date().toLocaleTimeString();
+}
+
+async function loadModel(){
+  const s = await get('/system');
+  try{ $('st-model').textContent = JSON.parse(s).name; }catch(e){}
+}
+
+// ---- network discovery ----
+// Probe one host's JointSpace /system; returns the model name or null.
+async function probe(ip, ver, ms){
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), ms);
+  try{
+    const r = await fetch(`http://${ip}:1925/${ver}/system`, {signal:ctrl.signal, cache:'no-store'});
+    const j = JSON.parse(await r.text());
+    return j && j.name ? j.name : null;
+  }catch(e){ return null; }
+  finally{ clearTimeout(t); }
+}
+
+async function discover(){
+  const btn = $('scanbtn');
+  if(btn.disabled) return;
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Escaneando…';
+  const ver = $('api').value.trim() || '6';
+  // derive /24 from the current IP field (fallback 192.168.18)
+  const m = $('ip').value.trim().match(/^(\d+\.\d+\.\d+)\./);
+  const prefix = m ? m[1] : '192.168.18';
+  log(`escaneando <b>${prefix}.1-254</b> :1925 …`);
+
+  const hosts = []; for(let i=1;i<=254;i++) hosts.push(`${prefix}.${i}`);
+  let done = 0, found = null;
+  const CONC = 40, TIMEOUT = 1200;
+
+  async function worker(){
+    while(hosts.length && !found){
+      const ip = hosts.shift();
+      const name = await probe(ip, ver, TIMEOUT);
+      done++;
+      if(name && !found){
+        found = {ip, name};
+      }
+      if(done % 20 === 0 && !found) $('foot').textContent = `escaneando… ${done}/254`;
+    }
+  }
+  await Promise.all(Array.from({length:CONC}, worker));
+
+  btn.disabled = false; btn.textContent = label;
+  if(found){
+    $('ip').value = found.ip;
+    log(`TV encontrada → <b>${found.name}</b> en <b>${found.ip}</b>`);
+    loadModel(); refresh();
+  }else{
+    log('no se encontró ninguna TV Philips en la red', true);
+    $('foot').textContent = 'escaneo completo · sin resultados';
+  }
+}
+
+// init
+loadModel();
+refresh();
+setInterval(refresh, 4000);
+['ip','api'].forEach(id=>$(id).addEventListener('change',()=>{loadModel();refresh();}));
+</script>
+</body>
+</html>
