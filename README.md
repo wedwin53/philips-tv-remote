@@ -1,8 +1,19 @@
-# Philips TV · JointSpace Remote
+# TV Remote · multi-driver
 
-Minimal, single-file web remote for Philips Smart TVs that expose the
-**JointSpace API** (port `1925`). No build step, no dependencies — open
-`index.html` in a browser on the same Wi-Fi as the TV.
+Minimal, single-file web remote for LAN-controllable Smart TVs. No build step,
+no dependencies — open `index.html` in a browser on the same Wi-Fi as the TV.
+
+A driver layer maps one logical button set to each brand's protocol. What a
+plain local HTML file can reliably reach (plain HTTP, no pairing/cert):
+
+| Brand | Protocol / port | Support |
+|---|---|---|
+| **Philips** | JointSpace `:1925` | ✅ full — status, volume slider, all keys |
+| **Roku / TCL-Roku** | ECP `:8060` | ✅ commands (fire-and-forget; responses unreadable in-browser due to no CORS) |
+| **Samsung / LG / Sony** | WebSocket/REST w/ token·pairing·TLS | ⛔ not from a local file — the browser can't negotiate their auth; use the official app |
+
+**Discover** auto-detects Philips (confirmed by reading `/system`) or Roku
+(port `:8060` open) on your subnet and selects the right driver.
 
 ![status: single-file](https://img.shields.io/badge/single--file-HTML-38e1b0) ![deps: none](https://img.shields.io/badge/deps-none-2bb3ff)
 
