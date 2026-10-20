@@ -68,10 +68,23 @@
     white-space:pre-wrap;word-break:break-word;line-height:1.5}
   .con b{color:var(--accent)} .con .e{color:var(--warn)}
   .foot{font-size:11px;color:var(--dim);text-align:center;margin-top:4px;font-family:var(--mono)}
+
+  /* connection banner */
+  .banner{border-radius:var(--radius);padding:11px 14px;margin-bottom:14px;font-size:13.5px;
+    font-weight:600;display:flex;align-items:center;gap:9px;border:1px solid transparent;line-height:1.35}
+  .banner::before{content:"";width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:currentColor}
+  .banner small{font-weight:400;opacity:.8;font-family:var(--mono);font-size:11px}
+  .b-wait{background:#15202b;border-color:var(--line);color:var(--dim)}
+  .b-on{background:#0d2a21;border-color:#1c5a46;color:var(--ok)}
+  .b-off{background:#2a1215;border-color:#5a1c24;color:var(--warn)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .b-wait::before{animation:pulse 1s infinite}
 </style>
 </head>
 <body>
   <h1><span id="dot" class="dot"></span> Philips TV · JointSpace</h1>
+
+  <div id="banner" class="banner b-wait">conectando…</div>
 
   <div class="card">
     <div class="cfg">
@@ -177,13 +190,22 @@ function log(msg, err){
 function setDot(state){ // 'on' | 'off'
   const d = $('dot'); d.className = 'dot ' + state;
 }
+// connection banner: state 'wait'|'on'|'off', html message, optional detail
+function setBanner(state, msg, detail){
+  const b = $('banner');
+  b.className = 'banner b-' + state;
+  b.innerHTML = msg + (detail ? ` <small>${detail}</small>` : '');
+}
 
+// last transport error, so callers can explain the failure
+let lastErr = null;
 // GET helper -> text (returns null on failure)
 async function get(path){
   try{
     const r = await fetch(base()+path, {method:'GET', cache:'no-store'});
+    lastErr = null;
     return await r.text();
-  }catch(e){ return null; }
+  }catch(e){ lastErr = e; return null; }
 }
 // POST command as a "simple request" (text/plain avoids CORS preflight)
 async function post(path, obj){
@@ -194,19 +216,36 @@ async function post(path, obj){
       body: JSON.stringify(obj)
     });
     await r.text();
+    lastErr = null;
     return r.ok;
-  }catch(e){ log('error de red → '+e.message, true); return false; }
+  }catch(e){ lastErr = e; return false; }
 }
 
 async function key(k){
   const ok = await post('/input/key', {key:k});
-  log(ok ? `tecla <b>${k}</b> enviada` : `fallo al enviar ${k}`, !ok);
+  if(ok){ log(`tecla <b>${k}</b> enviada`); }
+  else{ log(`no se pudo enviar <b>${k}</b> → ${reason()}`, true); markOffline(); }
   if(k==='Mute') setTimeout(refresh, 400);
 }
 async function setVol(v){
   $('volnum').textContent = v;
-  await post('/audio/volume', {muted:false, current:Number(v)});
-  log(`volumen → <b>${v}</b>`);
+  const ok = await post('/audio/volume', {muted:false, current:Number(v)});
+  if(ok){ log(`volumen → <b>${v}</b>`); }
+  else{ log(`no se pudo ajustar volumen → ${reason()}`, true); markOffline(); }
+}
+
+// human-readable guess at why a request failed
+function reason(){
+  if(location.protocol === 'https:')
+    return 'página HTTPS → TV HTTP (mixed-content). Abre el archivo local.';
+  return 'TV no responde: en standby (apagada) o fuera de la WiFi.';
+}
+function markOffline(){
+  setDot('off');
+  setBanner('off',
+    location.protocol==='https:' ? 'Bloqueado por el navegador' : 'TV no alcanzable',
+    reason());
+  $('foot').textContent = 'sin conexión · ' + new Date().toLocaleTimeString();
 }
 function confirmStandby(){
   if(confirm('¿Poner la TV en Standby (apagar)?')) key('Standby');
@@ -216,8 +255,9 @@ function confirmStandby(){
 async function refresh(){
   // volume
   const volRaw = await get('/audio/volume');
-  if(volRaw===null){ setDot('off'); $('foot').textContent='sin conexión con '+$('ip').value; return; }
+  if(volRaw===null){ markOffline(); return; }
   setDot('on');
+  setBanner('on', 'Conectada', $('ip').value + ':1925 · JointSpace v' + $('api').value);
   try{
     const v = JSON.parse(volRaw);
     $('st-vol').textContent = (v.muted?'muted · ':'') + v.current + '/' + v.max;
