@@ -110,8 +110,7 @@
   <div class="card">
     <div class="label">Volumen</div>
     <div class="vol" id="vol-slider">
-      <button class="btn sym" onclick="key('mute')" title="Silenciar">⊘</button>
-      <input id="volrange" type="range" min="0" max="60" value="0" oninput="setVol(this.value)" />
+      <input id="volrange" type="range" min="0" max="60" value="0" oninput="$('volnum').textContent=this.value" onchange="setVol(this.value)" />
       <span class="volnum" id="volnum">--</span>
     </div>
     <div class="grid g3 hide" id="vol-keys">
@@ -208,9 +207,17 @@ const DRIVERS = {
       d0:'Digit0',d1:'Digit1',d2:'Digit2',d3:'Digit3',d4:'Digit4',d5:'Digit5',d6:'Digit6',
       d7:'Digit7',d8:'Digit8',d9:'Digit9',dot:'Dot',enter:'ConfirmChannel' },
     async sendKey(logical){
+      // TV accepts VolumeUp/Down keys (200) but ignores them -> step via /audio/volume.
+      if(logical==='volup' || logical==='voldown') return this.stepVolume(logical==='volup' ? 1 : -1);
       const k = this.keymap[logical]; if(!k) return {skip:true};
       const r = await simplePost(this.base()+'/input/key', JSON.stringify({key:k}));
       return {ok:r};
+    },
+    async stepVolume(delta){
+      const v = await getJSON(this.base()+'/audio/volume');
+      if(!v) return {ok:false};
+      const n = Math.max(v.min||0, Math.min(v.max, v.current + delta));
+      return this.setVolume(n);
     },
     async setVolume(n){
       return { ok: await simplePost(this.base()+'/audio/volume', JSON.stringify({muted:false,current:Number(n)})) };
@@ -305,7 +312,7 @@ async function key(logical){
   if(res.skip){ log(`<b>${logical}</b> no existe en ${d.name}`, true); return; }
   if(res.ok){
     log(res.blind ? `<b>${logical}</b> enviado (ciego, sin confirmación)` : `tecla <b>${logical}</b> enviada`);
-    if(logical==='mute') setTimeout(refresh, 400);
+    if(['mute','volup','voldown'].includes(logical)) setTimeout(refresh, 400);
   }else{
     log(`no se pudo enviar <b>${logical}</b> → ${reason()}`, true);
     markOffline();
@@ -328,9 +335,9 @@ function applyBrand(){
   const d = drv();
   $('brandname').textContent = d.name;
   $('api').classList.toggle('hide', !d.usesApiVer);
-  // volume UI: slider vs key buttons
+  // volume UI: slider only where readable; Vol ± keys always
   $('vol-slider').classList.toggle('hide', !d.caps.volumeSlider);
-  $('vol-keys').classList.toggle('hide', d.caps.volumeSlider);
+  $('vol-keys').classList.toggle('hide', !!d.unsupported);
   // status card
   $('statuscard').classList.toggle('hide', d.unsupported);
   if(d.unsupported){
@@ -366,7 +373,9 @@ async function refresh(){
     if(s.volume){
       const v = s.volume;
       $('st-vol').textContent = (v.muted?'muted · ':'') + v.current + '/' + v.max;
-      const r = $('volrange'); r.max = v.max; r.value = v.current; $('volnum').textContent = v.current;
+      const r = $('volrange'); r.max = v.max;
+      // don't yank the slider back while the user is dragging it
+      if(document.activeElement !== r){ r.value = v.current; $('volnum').textContent = v.current; }
     }
     $('st-amb').textContent = s.extra || '—';
   }
