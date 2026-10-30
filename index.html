@@ -84,6 +84,7 @@
   <h1><span id="dot" class="dot"></span> TV Remote · <span id="brandname">Philips</span></h1>
 
   <div id="banner" class="banner b-wait">conectando…</div>
+  <button class="btn accent hide" id="lnabtn" style="width:100%;margin-bottom:14px" onclick="requestLan()">Permitir acceso a la red local</button>
 
   <div class="card">
     <div class="cfg">
@@ -249,7 +250,7 @@ const DRIVERS = {
       const k = this.keymap[logical]; if(!k) return {skip:true};
       // ECP keypress: POST, fire-and-forget. Roku sends no CORS header, so use no-cors.
       try{
-        await fetch(this.base()+'/keypress/'+k, {method:'POST', mode:'no-cors'});
+        await lan(this.base()+'/keypress/'+k, {method:'POST', mode:'no-cors'});
         return {ok:true, blind:true};
       }catch(e){ return {ok:false, err:e}; }
     },
@@ -257,7 +258,7 @@ const DRIVERS = {
     async status(){
       // ECP /query/* returns XML but no CORS header -> unreadable in-browser.
       // Confirm only that the port is listening (opaque no-cors resolve = alive).
-      try{ await fetch(this.base()+'/', {mode:'no-cors'}); return {ok:true, blind:true}; }
+      try{ await lan(this.base()+'/', {mode:'no-cors'}); return {ok:true, blind:true}; }
       catch(e){ return {ok:false}; }
     }
   },
@@ -271,15 +272,45 @@ const DRIVERS = {
 function drv(){ return DRIVERS[$('brand').value]; }
 
 /* ===================== transport helpers ==================== */
+// Chrome Local Network Access: lets an HTTPS page (GitHub Pages) call the TV's
+// plain-HTTP private IP after the user grants the local-network permission.
+// Browsers without LNA ignore the extra option.
+function lan(url, opts){ return fetch(url, {...opts, targetAddressSpace:'local'}); }
+
+// LNA permission state: 'granted' | 'prompt' | 'denied' | null (unsupported / not HTTPS)
+async function lanPermission(){
+  if(location.protocol !== 'https:') return null;
+  try{ return (await navigator.permissions.query({name:'local-network-access'})).state; }
+  catch(e){ return null; }
+}
+async function updateLanButton(){
+  const st = await lanPermission();
+  const b = $('lnabtn');
+  b.classList.toggle('hide', st === null || st === 'granted');
+  b.textContent = st === 'denied'
+    ? 'Red local bloqueada · desbloquéala en candado → Configuración del sitio'
+    : 'Permitir acceso a la red local';
+}
+// Chrome only shows the prompt on a real local request, so probe the TV.
+async function requestLan(){
+  const d = drv();
+  log('pidiendo permiso de red local a Chrome…');
+  try{ await lan(`http://${ipv()}:${d.port||1925}/`, {mode:'no-cors', cache:'no-store'}); }catch(e){}
+  const st = await lanPermission();
+  if(st === 'granted'){ log('permiso de red local <b>concedido</b>'); refresh(); }
+  else if(st === 'denied') log('permiso de red local <b>denegado</b> → candado → Configuración del sitio → Red local', true);
+  else log('Chrome no mostró el aviso → revisa candado → Configuración del sitio', true);
+  updateLanButton();
+}
 let lastErr = null;
 async function getJSON(url){
-  try{ const r = await fetch(url, {cache:'no-store'}); lastErr=null; return JSON.parse(await r.text()); }
+  try{ const r = await lan(url, {cache:'no-store'}); lastErr=null; return JSON.parse(await r.text()); }
   catch(e){ lastErr=e; return null; }
 }
 // POST as a simple request (text/plain => no CORS preflight)
 async function simplePost(url, body){
   try{
-    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain'}, body});
+    const r = await lan(url, {method:'POST', headers:{'Content-Type':'text/plain'}, body});
     await r.text(); lastErr=null; return r.ok;
   }catch(e){ lastErr=e; return false; }
 }
@@ -296,12 +327,12 @@ function setBanner(state, msg, detail){
 }
 function reason(){
   if(location.protocol === 'https:')
-    return 'página HTTPS → TV HTTP (mixed-content). Abre el archivo local.';
+    return 'acepta el permiso de "red local" en Chrome (candado → Configuración del sitio), o la TV está apagada / fuera de la WiFi.';
   return 'TV no responde: en standby (apagada) o fuera de la WiFi.';
 }
 function markOffline(){
   setDot('off');
-  setBanner('off', location.protocol==='https:' ? 'Bloqueado por el navegador' : 'TV no alcanzable', reason());
+  setBanner('off', location.protocol==='https:' ? 'TV no alcanzable (¿permiso de red local?)' : 'TV no alcanzable', reason());
   $('foot').textContent = 'sin conexión · ' + new Date().toLocaleTimeString();
 }
 
@@ -386,13 +417,13 @@ async function refresh(){
 // Philips is confirmable (readable /system). Roku we can only detect as "port open".
 async function probePhilips(ip, ver, ms){
   const c = new AbortController(); const t = setTimeout(()=>c.abort(), ms);
-  try{ const r = await fetch(`http://${ip}:1925/${ver}/system`, {signal:c.signal, cache:'no-store'});
+  try{ const r = await lan(`http://${ip}:1925/${ver}/system`, {signal:c.signal, cache:'no-store'});
     const j = JSON.parse(await r.text()); return j && j.name ? j.name : null;
   }catch(e){ return null; } finally{ clearTimeout(t); }
 }
 async function probePort(ip, port, ms){
   const c = new AbortController(); const t = setTimeout(()=>c.abort(), ms);
-  try{ await fetch(`http://${ip}:${port}/`, {signal:c.signal, mode:'no-cors'}); return true; }
+  try{ await lan(`http://${ip}:${port}/`, {signal:c.signal, mode:'no-cors'}); return true; }
   catch(e){ return false; } finally{ clearTimeout(t); }
 }
 
@@ -435,6 +466,9 @@ async function discover(){
 $('brand').addEventListener('change', applyBrand);
 ['ip','api'].forEach(id=>$(id).addEventListener('change', refresh));
 applyBrand();
+updateLanButton();
+try{ navigator.permissions.query({name:'local-network-access'})
+  .then(p => p.onchange = updateLanButton).catch(()=>{}); }catch(e){}
 setInterval(refresh, 4000);
 </script>
 </body>
